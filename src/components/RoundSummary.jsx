@@ -143,7 +143,7 @@ export default function RoundSummary({
               THE ORIGINAL
             </div>
 
-            {revealData.hook_lines?.slice(0, 2).map((line, i) => (
+            {revealData.hook_lines?.map((line, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, x: -8 }}

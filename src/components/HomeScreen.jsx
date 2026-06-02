@@ -31,7 +31,7 @@ export default function HomeScreen({ onStart, isStarting = false, startError = n
             maxWidth: '400px',
             lineHeight: 1.5,
           }}>
-            Famous lyrics. Mangled beyond recognition.<br />Can you guess the song?
+            Famous lyrics. Scrambled beyond recognition.<br />Can you guess the song?
           </p>
         </div>
 
@@ -102,10 +102,10 @@ export default function HomeScreen({ onStart, isStarting = false, startError = n
               lineHeight: 1.7,
             }}
           >
-            <p><strong style={{ color: 'var(--text-primary)' }}>1. Listen</strong> — A short clip from a popular song plays.</p>
-            <p style={{ marginTop: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>2. Decode</strong> — The lyrics have been translated through bizarre language chains and back to English. They're mangled — but the meaning is still in there.</p>
-            <p style={{ marginTop: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>3. Guess</strong> — Type the song title. Use hints if you're stuck, but each hint costs points.</p>
-            <p style={{ marginTop: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>4. Adapt</strong> — The game watches how fast and confidently you answer. It gets harder when you're winning.</p>
+            <p><strong style={{ color: 'var(--text-primary)' }}>1. Listen</strong>: A short clip from a popular song plays.</p>
+            <p style={{ marginTop: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>2. Decode</strong>: The lyrics have been translated through bizarre language chains and back to English. They're scrambled, but the meaning is still in there.</p>
+            <p style={{ marginTop: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>3. Guess</strong>: Type the song title. Use hints if you're stuck, but each hint costs points.</p>
+            <p style={{ marginTop: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>4. Adapt</strong>: The game watches how fast and confidently you answer. It gets harder when you're winning.</p>
           </motion.div>
         )}
       </motion.div>

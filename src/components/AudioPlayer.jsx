@@ -47,6 +47,8 @@ const AudioPlayer = forwardRef(function AudioPlayer(
     playClip: () => play(previewUrl, clipDurationMs, onClipEnded),
   }))
 
+  const handleReplay = () => play(previewUrl, clipDurationMs)
+
   return (
     <motion.div
       animate={{
@@ -138,12 +140,37 @@ const AudioPlayer = forwardRef(function AudioPlayer(
           )}
 
           {hasPlayed && !isPlaying && (
-            <div style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-            }}>
-              Clip ended — guess the song below
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+              <div style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+              }}>
+                Clip ended. Guess the song below
+              </div>
+              <motion.button
+                onClick={handleReplay}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.93 }}
+                title={`Replay ${(clipDurationMs / 1000).toFixed(1)}s clip`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'none',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: '6px',
+                  color: 'var(--text-muted)',
+                  fontFamily: '"Bebas Neue", sans-serif',
+                  fontSize: '11px',
+                  letterSpacing: '0.12em',
+                  padding: '3px 8px',
+                  cursor: 'pointer',
+                  lineHeight: 1.4,
+                }}
+              >
+                ↺ {(clipDurationMs / 1000).toFixed(1)}s
+              </motion.button>
             </div>
           )}
         </div>

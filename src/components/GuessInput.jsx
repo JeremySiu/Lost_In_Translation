@@ -1,7 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Fuse from 'fuse.js'
 
 export default function GuessInput({ songs, onGuess, disabled, guessState }) {
   // guessState: null | 'correct' | 'wrong'
@@ -10,17 +9,7 @@ export default function GuessInput({ songs, onGuess, disabled, guessState }) {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [shake, setShake] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
-  const fuseRef = useRef(null)
   const inputRef = useRef(null)
-
-  useEffect(() => {
-    if (!songs?.length) return
-    fuseRef.current = new Fuse(songs, {
-      keys: ['title', 'artist'],
-      threshold: 0.35,
-      includeMatches: true,
-    })
-  }, [songs])
 
   // Shake on wrong guess
   useEffect(() => {
@@ -39,13 +28,14 @@ export default function GuessInput({ songs, onGuess, disabled, guessState }) {
     setValue(val)
     setHighlightedIndex(-1)
 
-    if (val.length < 2 || !fuseRef.current) {
+    if (val.length < 2 || !songs?.length) {
       setSuggestions([])
       setShowSuggestions(false)
       return
     }
 
-    const results = fuseRef.current.search(val).slice(0, 5)
+    const lower = val.toLowerCase()
+    const results = songs.filter(s => s.title.toLowerCase().includes(lower))
     setSuggestions(results)
     setShowSuggestions(results.length > 0)
   }
@@ -69,7 +59,7 @@ export default function GuessInput({ songs, onGuess, disabled, guessState }) {
     } else if (e.key === 'Enter') {
       e.preventDefault()
       if (highlightedIndex >= 0 && suggestions[highlightedIndex]) {
-        const s = suggestions[highlightedIndex].item
+        const s = suggestions[highlightedIndex]
         submitGuess(`${s.title} - ${s.artist}`)
       } else {
         submitGuess(value)
@@ -159,11 +149,12 @@ export default function GuessInput({ songs, onGuess, disabled, guessState }) {
               border: '1px solid var(--border-default)',
               borderRadius: '10px',
               overflow: 'hidden',
+              maxHeight: '260px',
+              overflowY: 'auto',
               zIndex: 100,
             }}
           >
-            {suggestions.map((result, i) => {
-              const s = result.item
+            {suggestions.map((s, i) => {
               return (
                 <button
                   key={s.id}

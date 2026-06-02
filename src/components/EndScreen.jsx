@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 
-function ScoreRow({ rank, entry }) {
+function ScoreRow({ rank, entry, isPlayer }) {
   return (
     <div style={{
       display: 'flex',
@@ -10,11 +10,13 @@ function ScoreRow({ rank, entry }) {
       alignItems: 'center',
       padding: '10px 16px',
       borderBottom: '1px solid var(--border-subtle)',
+      background: isPlayer ? 'var(--bg-elevated)' : 'none',
+      borderLeft: isPlayer ? '3px solid var(--accent-yellow)' : '3px solid transparent',
     }}>
       <span style={{
         fontFamily: '"Bebas Neue", sans-serif',
         fontSize: '18px',
-        color: rank <= 3 ? 'var(--accent-yellow)' : 'var(--text-muted)',
+        color: rank <= 3 || isPlayer ? 'var(--accent-yellow)' : 'var(--text-muted)',
         width: '32px',
       }}>
         {rank}
@@ -22,11 +24,12 @@ function ScoreRow({ rank, entry }) {
       <span style={{
         fontFamily: '"Share Tech Mono", monospace',
         fontSize: '16px',
-        color: 'var(--text-primary)',
+        color: isPlayer ? 'var(--accent-yellow)' : 'var(--text-primary)',
         flex: 1,
         paddingLeft: '12px',
       }}>
         {entry.initials}
+        {isPlayer && <span style={{ fontSize: '11px', marginLeft: '8px', color: 'var(--text-muted)', fontFamily: '"DM Sans", sans-serif' }}>YOU</span>}
       </span>
       <span style={{
         fontFamily: '"Bebas Neue", sans-serif',
@@ -43,6 +46,7 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
   const [leaderboard, setLeaderboard] = useState([])
   const [initials, setInitials] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [submittedInitials, setSubmittedInitials] = useState(null)
   const [isTopTen, setIsTopTen] = useState(false)
   const [loadingBoard, setLoadingBoard] = useState(true)
 
@@ -61,7 +65,7 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
   }, [scoreTotal])
 
   const handleSubmitScore = async () => {
-    const clean = initials.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3)
+    const clean = initials.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
     if (clean.length === 0) return
 
     await fetch('/api/leaderboard', {
@@ -71,7 +75,7 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
     })
 
     setSubmitted(true)
-    // Refresh leaderboard
+    setSubmittedInitials(clean)
     fetch('/api/leaderboard')
       .then(r => r.json())
       .then(data => setLeaderboard(Array.isArray(data) ? data : []))
@@ -135,14 +139,14 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
               color: 'var(--accent-yellow)',
               marginBottom: '12px',
             }}>
-              🏆 TOP 10 SCORE! ENTER YOUR INITIALS
+              TOP 10 SCORE! ENTER YOUR INITIALS
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <input
                 value={initials}
-                onChange={e => setInitials(e.target.value.toUpperCase().slice(0, 3))}
-                maxLength={3}
-                placeholder="AAA"
+                onChange={e => setInitials(e.target.value.toUpperCase().slice(0, 2))}
+                maxLength={2}
+                placeholder="AA"
                 style={{
                   width: '80px',
                   padding: '12px',
@@ -218,7 +222,12 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
             </div>
           ) : (
             leaderboard.map((entry, i) => (
-              <ScoreRow key={i} rank={i + 1} entry={entry} />
+              <ScoreRow
+                key={i}
+                rank={i + 1}
+                entry={entry}
+                isPlayer={submittedInitials !== null && entry.initials === submittedInitials && Number(entry.score) === scoreTotal}
+              />
             ))
           )}
         </div>

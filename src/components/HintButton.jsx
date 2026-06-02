@@ -31,7 +31,6 @@ export default function HintButton({ onClick, costPoints, disabled, hintsRemaini
         alignItems: 'center',
         gap: '8px',
       }}>
-        <span style={{ fontSize: '15px' }}>💡</span>
         Reveal next hint
         {hintsRemaining !== undefined && (
           <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>

@@ -1,17 +1,19 @@
 'use client'
+import ReactCountryFlag from 'react-country-flag'
 
-const FLAG_MAP = {
-  Mandarin: '🇨🇳', Swahili: '🇰🇪', Finnish: '🇫🇮', Icelandic: '🇮🇸',
-  Mongolian: '🇲🇳', Yoruba: '🇳🇬', Georgian: '🇬🇪', Basque: '🇪🇸',
-  Tamil: '🇮🇳', Quechua: '🇵🇪', Latvian: '🇱🇻', Zulu: '🇿🇦',
-  Kazakh: '🇰🇿', Welsh: '🏴󠁧󠁢󠁷󠁬󠁳󠁿', Amharic: '🇪🇹',
+const ISO_MAP = {
+  Mandarin: 'CN', Swahili: 'KE', Finnish: 'FI', Icelandic: 'IS',
+  Mongolian: 'MN', Yoruba: 'NG', Georgian: 'GE', Basque: 'ES',
+  Tamil: 'IN', Quechua: 'PE', Latvian: 'LV', Zulu: 'ZA',
+  Kazakh: 'KZ', Welsh: 'GB-WLS', Amharic: 'ET',
 }
 
 function LangPill({ lang }) {
+  const code = ISO_MAP[lang]
   return (
     <span style={{
       padding: '3px 10px',
-      borderRadius: '999px',
+      borderRadius: '4px',
       border: '1px solid rgba(155, 109, 255, 0.3)',
       background: 'rgba(155, 109, 255, 0.08)',
       color: 'var(--accent-purple)',
@@ -19,8 +21,18 @@ function LangPill({ lang }) {
       fontSize: '12px',
       letterSpacing: '0.05em',
       whiteSpace: 'nowrap',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '5px',
     }}>
-      {FLAG_MAP[lang] ?? ''} {lang}
+      {code && (
+        <ReactCountryFlag
+          countryCode={code}
+          svg
+          style={{ width: '16px', height: '12px', objectFit: 'cover' }}
+        />
+      )}
+      {lang}
     </span>
   )
 }

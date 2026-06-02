@@ -75,7 +75,7 @@ export default function RoundHeader({ songIndex, totalSongs, score, streak, song
                 fontWeight: 600,
               }}
             >
-              🔥 ×{streak.toFixed(1)}
+              🔥 ×{streak.toFixed(0)}
             </motion.span>
           )}
         </AnimatePresence>

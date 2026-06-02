@@ -49,12 +49,16 @@ async function fetchReveal(songId) {
 export default function App() {
   const { state, dispatch } = useGameState()
   const audioRef = useRef(null)
-  const giveUpClicksRef = useRef(0)
+  const giveUpTimerRef = useRef(null)
+  const giveUpStartRef = useRef(null)
+  const [giveUpProgress, setGiveUpProgress] = useState(0)
   const [isStarting, setIsStarting] = useState(false)
   const [startError, setStartError] = useState(null)
   const ttsAudioRef = useRef(null)
   const prevRevealedRef = useRef(0)
   const prevSongIndexRef = useRef(-1)
+  const ttsCacheRef = useRef(new Map())
+  const ttsBlobUrlsRef = useRef([])
 
   const currentSong = state.songs[state.currentSongIndex]
   const currentMangled = currentSong ? state.mangledSongs[currentSong.id] : null
@@ -112,6 +116,11 @@ export default function App() {
         clipDurationMs: mangleResult.clip_duration_ms ?? 4000,
         difficulty: mangleResult.difficulty ?? 'medium',
       })
+
+      const firstMangled = mangledSongs[songs[0].id]
+      if (firstMangled?.mangled_lines) {
+        prefetchTTSForSong(songs[0].id, firstMangled.mangled_lines)
+      }
     } catch (err) {
       setStartError(err.message ?? 'Something went wrong. Please try again.')
     } finally {
@@ -123,29 +132,60 @@ export default function App() {
     dispatch({ type: 'CLIP_ENDED' })
   }, [dispatch])
 
-  const speakLyric = useCallback(async (text) => {
-    if (ttsAudioRef.current) {
-      ttsAudioRef.current.pause()
-      ttsAudioRef.current = null
-    }
-    try {
-      const res = await fetch('/api/tts', {
+  const clearTTSCache = useCallback(() => {
+    ttsBlobUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
+    ttsBlobUrlsRef.current = []
+    ttsCacheRef.current.clear()
+  }, [])
+
+  // Returns a Promise<string|null> — resolves to a blob URL or null on error.
+  // Stores the promise immediately so concurrent callers share one in-flight request.
+  const getOrFetchTTS = useCallback((songId, lineIndex, text) => {
+    const key = `${songId}:${lineIndex}`
+    if (!ttsCacheRef.current.has(key)) {
+      const p = fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       })
-      if (!res.ok) return
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      ttsAudioRef.current = audio
-      audio.play().catch(() => {})
-      audio.addEventListener('ended', () => {
-        URL.revokeObjectURL(url)
-        if (ttsAudioRef.current === audio) ttsAudioRef.current = null
-      })
-    } catch {}
+        .then(res => res.ok ? res.blob() : Promise.reject())
+        .then(blob => {
+          const url = URL.createObjectURL(blob)
+          ttsBlobUrlsRef.current.push(url)
+          return url
+        })
+        .catch(() => null)
+      ttsCacheRef.current.set(key, p)
+    }
+    return ttsCacheRef.current.get(key)
   }, [])
+
+  const prefetchTTSForSong = useCallback((songId, mangledLines) => {
+    // Only prefetch the first two lines to bootstrap the sliding window.
+    // After that, each play triggers the fetch for the following line.
+    if (mangledLines[0]) getOrFetchTTS(songId, 0, mangledLines[0])
+    if (mangledLines[1]) getOrFetchTTS(songId, 1, mangledLines[1])
+  }, [getOrFetchTTS])
+
+  // nextText: the text of line lineIndex+1, if it exists. Kicks off its fetch
+  // while the current audio is already loading/playing, so it's ready instantly.
+  const speakLyric = useCallback(async (songId, lineIndex, text, nextText) => {
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current = null
+    }
+    if (nextText) getOrFetchTTS(songId, lineIndex + 1, nextText)
+    const url = await getOrFetchTTS(songId, lineIndex, text)
+    if (!url) return
+    const audio = new Audio(url)
+    ttsAudioRef.current = audio
+    audio.play().catch(() => {})
+    audio.addEventListener('ended', () => {
+      if (ttsAudioRef.current === audio) ttsAudioRef.current = null
+    })
+  }, [getOrFetchTTS])
+
+  useEffect(() => () => clearTTSCache(), [clearTTSCache])
 
   // Speak each lyric line as it is revealed in the guessing phase
   useEffect(() => {
@@ -167,8 +207,8 @@ export default function App() {
     prevRevealedRef.current = revealedCount
 
     const text = mangled[newLineIndex]
-    if (text) speakLyric(text)
-  }, [state.phase, state.revealedCount, state.currentSongIndex, mangled, speakLyric])
+    if (text && currentSong) speakLyric(currentSong.id, newLineIndex, text, mangled[newLineIndex + 1])
+  }, [state.phase, state.revealedCount, state.currentSongIndex, mangled, speakLyric, currentSong])
 
   const handleHint = useCallback(() => {
     dispatch({ type: 'REVEAL_HINT' })
@@ -180,9 +220,15 @@ export default function App() {
     if (nextIndex >= state.songs.length) return
     const nextSong = state.songs[nextIndex]
     fetchMangle([nextSong], updatedPerfHistory, state.roundNumber)
-      .then(result => dispatch({ type: 'MERGE_MANGLE', data: result }))
+      .then(result => {
+        dispatch({ type: 'MERGE_MANGLE', data: result })
+        const nextMangled = result.songs?.[0]
+        if (nextMangled?.mangled_lines) {
+          prefetchTTSForSong(nextMangled.id, nextMangled.mangled_lines)
+        }
+      })
       .catch(() => {})
-  }, [state.currentSongIndex, state.songs, state.roundNumber, dispatch])
+  }, [state.currentSongIndex, state.songs, state.roundNumber, dispatch, prefetchTTSForSong])
 
   const handleGuess = useCallback((guess) => {
     if (!currentSong) return
@@ -206,13 +252,7 @@ export default function App() {
     }
   }, [currentSong, state.performanceHistory, state.timerStart, state.hintsUsed, state.streak, state.wrongGuesses, prefetchNextSong])
 
-  const handleGiveUp = useCallback(() => {
-    giveUpClicksRef.current += 1
-    if (giveUpClicksRef.current < 2) {
-      setTimeout(() => { giveUpClicksRef.current = 0 }, 1500)
-      return
-    }
-    giveUpClicksRef.current = 0
+  const triggerGiveUp = useCallback(() => {
     dispatch({ type: 'GIVE_UP' })
     if (currentSong) {
       fetchReveal(currentSong.id).then(data => dispatch({ type: 'SET_REVEAL_DATA', data }))
@@ -220,6 +260,30 @@ export default function App() {
     const updatedPerf = [...state.performanceHistory, { score: 0, timeToGuessSeconds: 60, hintsUsed: state.hintsUsed, wrongGuesses: state.wrongGuesses }]
     prefetchNextSong(updatedPerf)
   }, [dispatch, currentSong, state.performanceHistory, state.hintsUsed, state.wrongGuesses, prefetchNextSong])
+
+  const handleGiveUpStart = useCallback((e) => {
+    e.preventDefault()
+    giveUpStartRef.current = Date.now()
+    giveUpTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - giveUpStartRef.current
+      const progress = Math.min((elapsed / 2000) * 100, 100)
+      setGiveUpProgress(progress)
+      if (progress >= 100) {
+        clearInterval(giveUpTimerRef.current)
+        giveUpTimerRef.current = null
+        setGiveUpProgress(0)
+        triggerGiveUp()
+      }
+    }, 30)
+  }, [triggerGiveUp])
+
+  const handleGiveUpEnd = useCallback(() => {
+    if (giveUpTimerRef.current) {
+      clearInterval(giveUpTimerRef.current)
+      giveUpTimerRef.current = null
+    }
+    setGiveUpProgress(0)
+  }, [])
 
   const handleShowSummary = useCallback(() => {
     dispatch({ type: 'SHOW_SUMMARY' })
@@ -230,8 +294,9 @@ export default function App() {
   }, [dispatch])
 
   const handleNewGame = useCallback(() => {
+    clearTTSCache()
     dispatch({ type: 'NEW_GAME' })
-  }, [dispatch])
+  }, [dispatch, clearTTSCache])
 
   const maxHints = mangled.length
   const hintsRemaining = Math.max(0, maxHints - state.revealedCount)
@@ -314,18 +379,39 @@ export default function App() {
 
                 <div style={{ marginTop: '8px', textAlign: 'center' }}>
                   <button
-                    onClick={handleGiveUp}
+                    onMouseDown={handleGiveUpStart}
+                    onMouseUp={handleGiveUpEnd}
+                    onMouseLeave={handleGiveUpEnd}
+                    onTouchStart={handleGiveUpStart}
+                    onTouchEnd={handleGiveUpEnd}
                     style={{
+                      position: 'relative',
+                      overflow: 'hidden',
                       background: 'none',
-                      border: 'none',
-                      color: 'var(--text-muted)',
+                      border: '1px solid transparent',
+                      borderRadius: '6px',
+                      color: giveUpProgress > 0 ? 'var(--text-secondary)' : 'var(--text-muted)',
                       fontFamily: '"DM Sans", sans-serif',
                       fontSize: '13px',
                       cursor: 'pointer',
-                      padding: '8px',
+                      padding: '8px 16px',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                      transition: 'color 0.15s',
                     }}
                   >
-                    Give up (click twice)
+                    <div style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      height: '100%',
+                      width: `${giveUpProgress}%`,
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      transition: giveUpProgress === 0 ? 'none' : undefined,
+                    }} />
+                    <span style={{ position: 'relative', zIndex: 1 }}>
+                      {giveUpProgress > 0 ? 'Hold to give up...' : 'Give up'}
+                    </span>
                   </button>
                 </div>
               </motion.div>

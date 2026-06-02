@@ -10,7 +10,7 @@ const LANGUAGE_POOL = [
  */
 export function computeAdaptiveParams(performanceHistory = [], roundNumber = 1) {
   if (performanceHistory.length === 0) {
-    return { difficulty: 'medium', clip_duration_ms: 4000 }
+    return { difficulty: 'medium', clip_duration_ms: 5000 }
   }
 
   const scores = performanceHistory.map(p => {
@@ -40,26 +40,35 @@ export function computeAdaptiveParams(performanceHistory = [], roundNumber = 1) 
   else if (performanceRatio >= 0.20) difficulty = 'easy'
   else difficulty = 'very_easy'
 
-  // Clip: 5000ms at ratio=0, 1000ms at ratio=1
-  const clip_duration_ms = Math.round(Math.max(1000, Math.min(5000, 5000 - performanceRatio * 4000)))
+  // Power curve: struggling players (ratio→0) get ~10s, top players (ratio→1) get ~1s.
+  // Exponent 1.5 compresses the high end so hard/very_hard land in the 1–3s range.
+  const clip_duration_ms = Math.round(1000 + 9000 * Math.pow(1 - performanceRatio, 1.5))
 
   return { difficulty, clip_duration_ms }
 }
 
 export function buildManglePrompt(hookLines, languageChain, difficulty) {
   const instructions = {
-    very_easy: `Mild mangling only. Replace words with close synonyms. Keep sentence structure intact. The song should be immediately recognisable.`,
-    easy: `Moderate mangling. Replace key words with formal synonyms, keep structure close. The emotional meaning should still be clear after a moment's thought.`,
-    medium: `Substantial mangling. Use overly literal or bureaucratic phrasing. Meaning is decipherable but requires real thought.`,
-    hard: `Aggressive mangling. Use highly formal, academic, or clinical language. The connection to the original should require genuine effort.`,
-    very_hard: `Maximum mangling. The original meaning must be extremely obscure. Use the most indirect, convoluted phrasing possible while technically preserving meaning.`,
+    very_easy: `Minimal mangling. Swap a few words for near-synonyms only. Keep the original rhythm and structure completely intact. A casual listener should recognise the song instantly.`,
+    easy: `Light mangling. Replace some key words with slightly formal synonyms; preserve sentence structure. The emotional meaning must remain obvious after one read.`,
+    medium: `Moderate mangling. Use overly literal or bureaucratic phrasing throughout. Meaning is still deducible but requires real thought.`,
+    hard: `Heavy mangling. Rewrite using highly formal, academic, or clinical register. Every line should take significant effort to decode back to the original.`,
+    very_hard: `Maximum mangling. The original meaning must be extremely obscure. Use the most indirect, convoluted phrasing possible while technically preserving meaning. A player who knows the song well should still struggle.`,
+  }
+
+  const difficultyLabel = {
+    very_easy: 'VERY EASY — player is struggling significantly, make output as recognisable as possible',
+    easy: 'EASY — player is having difficulty, keep mangling gentle and meaning clear',
+    medium: 'MEDIUM — player is performing averagely, balanced mangling',
+    hard: 'HARD — player is doing well, make this challenging',
+    very_hard: 'VERY HARD — player is acing the game, make this as obscure as possible',
   }
 
   return `You are a language mangling engine for a music guessing game.
 
 Simulate translating these lyrics through: English → ${languageChain.join(' → ')} → English
 
-Difficulty: ${difficulty.toUpperCase()}
+Difficulty: ${difficultyLabel[difficulty]}
 ${instructions[difficulty]}
 
 Lines to mangle:
