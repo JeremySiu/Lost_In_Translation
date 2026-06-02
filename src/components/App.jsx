@@ -128,9 +128,11 @@ export default function App() {
     }
   }, [dispatch])
 
-  const handleClipEnded = useCallback(() => {
+  const handleClipEnded = useCallback(async () => {
+    const p = currentSong ? ttsCacheRef.current.get(`${currentSong.id}:0`) : null
+    if (p) await p
     dispatch({ type: 'CLIP_ENDED' })
-  }, [dispatch])
+  }, [dispatch, currentSong])
 
   const clearTTSCache = useCallback(() => {
     ttsBlobUrlsRef.current.forEach(url => URL.revokeObjectURL(url))

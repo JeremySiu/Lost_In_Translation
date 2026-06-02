@@ -95,7 +95,7 @@ export default function HomeScreen({ onStart, isStarting = false, startError = n
               padding: '20px',
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-default)',
-              borderRadius: '10px',
+              borderRadius: '5px',
               fontFamily: '"DM Sans", sans-serif',
               fontSize: '14px',
               color: 'var(--text-secondary)',
