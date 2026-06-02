@@ -15,20 +15,38 @@ async function getLastFmTopTracks(limit = 100) {
 
 // ── iTunes: search for a track and get a 30s preview URL ─────────────────────
 
+function normalize(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
 async function itunesSearch(title, artist) {
   const q = encodeURIComponent(`${title} ${artist}`)
-  const url = `https://itunes.apple.com/search?term=${q}&entity=song&limit=1`
+  const url = `https://itunes.apple.com/search?term=${q}&entity=song&limit=5`
   try {
     const res = await fetch(url)
     if (!res.ok) return null
     const data = await res.json()
-    const result = data.results?.[0]
-    if (!result || !result.previewUrl) return null
+    const candidates = (data.results ?? []).filter(r => r.previewUrl)
+    if (!candidates.length) return null
+
+    const targetArtist = normalize(artist)
+    const targetTitle = normalize(title)
+
+    // Prefer the candidate whose artist + title both match; fall back to artist-only, then first result
+    const score = r => {
+      const a = normalize(r.artistName)
+      const t = normalize(r.trackName)
+      const artistMatch = a.includes(targetArtist) || targetArtist.includes(a)
+      const titleMatch = t.includes(targetTitle) || targetTitle.includes(t)
+      return (artistMatch ? 2 : 0) + (titleMatch ? 1 : 0)
+    }
+
+    const best = candidates.reduce((a, b) => score(a) >= score(b) ? a : b)
     return {
-      preview_url: result.previewUrl,
-      title: result.trackName,
-      artist: result.artistName,
-      release_year: new Date(result.releaseDate ?? '2020').getFullYear(),
+      preview_url: best.previewUrl,
+      title: best.trackName,
+      artist: best.artistName,
+      release_year: new Date(best.releaseDate ?? '2020').getFullYear(),
     }
   } catch {
     return null
