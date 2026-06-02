@@ -1,28 +1,44 @@
 import { NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
+import { createClient } from '@supabase/supabase-js'
 
 const MAX_SCORE = 5000 // 5 songs × 500pts × 2x streak cap
 
-export async function GET() {
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return null
   try {
-    const raw = await kv.zrange('leaderboard', 0, 9, { rev: true, withScores: true })
-    // raw alternates: [member, score, member, score, ...]
-    const entries = []
-    for (let i = 0; i < raw.length; i += 2) {
-      try {
-        const parsed = JSON.parse(raw[i])
-        entries.push({ ...parsed, score: raw[i + 1] })
-      } catch {
-        entries.push({ initials: '???', score: raw[i + 1], date: 0 })
-      }
-    }
-    return NextResponse.json(entries)
-  } catch (err) {
-    return NextResponse.json({ error: 'KV unavailable' }, { status: 503 })
+    return createClient(url, key)
+  } catch {
+    return null
   }
 }
 
+export async function GET() {
+  const supabase = getSupabase()
+  if (!supabase) return NextResponse.json({ error: 'DB unavailable' }, { status: 503 })
+
+  const { data, error } = await supabase
+    .from('Leaderboard')
+    .select('initials, score, created_at')
+    .order('score', { ascending: false })
+    .limit(10)
+
+  if (error) return NextResponse.json({ error: 'DB unavailable' }, { status: 503 })
+
+  const entries = data.map(row => ({
+    initials: row.initials,
+    score: row.score,
+    date: new Date(row.created_at).getTime(),
+  }))
+
+  return NextResponse.json(entries)
+}
+
 export async function POST(request) {
+  const supabase = getSupabase()
+  if (!supabase) return NextResponse.json({ error: 'DB unavailable' }, { status: 503 })
+
   const body = await request.json().catch(() => ({}))
   const { initials, score } = body
 
@@ -33,7 +49,11 @@ export async function POST(request) {
   const safeInitials = String(initials).toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3)
   if (safeInitials.length === 0) return NextResponse.json({ error: 'Invalid initials' }, { status: 400 })
 
-  const member = JSON.stringify({ initials: safeInitials, score, date: Date.now() })
-  await kv.zadd('leaderboard', { score, member })
+  const { error } = await supabase
+    .from('Leaderboard')
+    .insert({ initials: safeInitials, score })
+
+  if (error) return NextResponse.json({ error: 'DB unavailable' }, { status: 503 })
+
   return NextResponse.json({ ok: true })
 }

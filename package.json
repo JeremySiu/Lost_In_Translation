@@ -8,9 +8,8 @@
     "start": "next start"
   },
   "dependencies": {
-    "@elevenlabs/elevenlabs-js": "^2.49.1",
     "@langchain/google-genai": "^0.1",
-    "@vercel/kv": "^2",
+    "@supabase/supabase-js": "^2.106.2",
     "framer-motion": "^11",
     "fuse.js": "^7",
     "genius-lyrics": "^4",

@@ -1,19 +1,9 @@
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js'
-
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
-
-let _client = null
-function getClient() {
-  if (!_client) {
-    _client = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY })
-  }
-  return _client
-}
+const VOICE_ID = process.env.GRADIUM_VOICE_ID
 
 export async function POST(request) {
-  const apiKey = process.env.ELEVENLABS_API_KEY
+  const apiKey = process.env.GRADIUM_API_KEY
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'ELEVENLABS_API_KEY not configured' }), {
+    return new Response(JSON.stringify({ error: 'GRADIUM_API_KEY not configured' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -28,17 +18,31 @@ export async function POST(request) {
     })
   }
 
-  const { data } = await getClient()
-    .textToSpeech
-    .convert(VOICE_ID, {
-      text: text.trim(),
-      modelId: 'eleven_v3',
-    })
-    .withRawResponse()
-
-  return new Response(data, {
+  const res = await fetch('https://api.gradium.ai/api/post/speech/tts', {
+    method: 'POST',
     headers: {
-      'Content-Type': 'audio/mpeg',
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text: text.trim(),
+      voice_id: VOICE_ID,
+      output_format: 'wav',
+      only_audio: true,
+    }),
+  })
+
+  if (!res.ok) {
+    return new Response(JSON.stringify({ error: 'TTS request failed' }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const audio = await res.arrayBuffer()
+  return new Response(audio, {
+    headers: {
+      'Content-Type': 'audio/wav',
       'Cache-Control': 'no-store',
     },
   })
