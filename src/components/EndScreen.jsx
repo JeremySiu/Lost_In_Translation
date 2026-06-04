@@ -47,7 +47,6 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
   const [initials, setInitials] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [submittedInitials, setSubmittedInitials] = useState(null)
-  const [isTopTen, setIsTopTen] = useState(false)
   const [playerRank, setPlayerRank] = useState(null)
   const [loadingBoard, setLoadingBoard] = useState(true)
 
@@ -58,8 +57,6 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
         const entries = Array.isArray(data.entries) ? data.entries : []
         setLeaderboard(entries)
         setPlayerRank(data.playerRank ?? null)
-        const wouldMakeIt = entries.length < 10 || score > (entries[entries.length - 1]?.score ?? 0)
-        setIsTopTen(wouldMakeIt)
         setLoadingBoard(false)
       })
       .catch(() => setLoadingBoard(false))
@@ -70,11 +67,13 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
     const clean = initials.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
     if (clean.length === 0) return
 
-    await fetch('/api/leaderboard', {
+    const res = await fetch('/api/leaderboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ initials: clean, score: scoreTotal }),
     })
+
+    if (!res.ok) return
 
     setSubmitted(true)
     setSubmittedInitials(clean)
@@ -120,7 +119,7 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
         </div>
 
         {/* Submit score */}
-        {isTopTen && !submitted && (
+        {!submitted && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -139,7 +138,7 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
               color: 'var(--accent-yellow)',
               marginBottom: '12px',
             }}>
-              TOP 10 SCORE! ENTER YOUR INITIALS
+              ENTER YOUR INITIALS
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <input
