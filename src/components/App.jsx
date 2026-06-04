@@ -312,6 +312,38 @@ export default function App() {
   }
 
   return (
+    <>
+    <header style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 100,
+      display: 'flex',
+      alignItems: 'center',
+      padding: '8px 16px',
+    }}>
+      <img
+        src="/logo.png"
+        alt="Lost in Translation"
+        style={{ height: '64px', width: 'auto' }}
+      />
+      {state.screen !== 'home' && (
+        <div style={{
+          fontFamily: '"Bebas Neue", sans-serif',
+          fontSize: '30px',
+          lineHeight: 0.9,
+          marginLeft: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          height: '64px',
+        }}>
+          <div style={{ color: 'var(--text-primary)' }}>LOST IN</div>
+          <div style={{ color: 'var(--accent-yellow)' }}>TRANSLATION</div>
+        </div>
+      )}
+    </header>
     <AnimatePresence>
       {state.screen === 'home' && (
         <motion.div key="home" {...screenVariants} transition={{ duration: 0.3 }}>
@@ -513,5 +545,6 @@ export default function App() {
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   )
 }

@@ -6,7 +6,7 @@ export default function HomeScreen({ onStart, isStarting = false, startError = n
   const [howToOpen, setHowToOpen] = useState(false)
 
   return (
-    <div className="game-container" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '100vh' }}>
+    <div className="game-container" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 'calc(100vh - 80px)' }}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
