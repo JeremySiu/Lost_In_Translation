@@ -48,21 +48,23 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
   const [submitted, setSubmitted] = useState(false)
   const [submittedInitials, setSubmittedInitials] = useState(null)
   const [isTopTen, setIsTopTen] = useState(false)
+  const [playerRank, setPlayerRank] = useState(null)
   const [loadingBoard, setLoadingBoard] = useState(true)
 
-  useEffect(() => {
-    fetch('/api/leaderboard')
+  const fetchLeaderboard = (score) =>
+    fetch(`/api/leaderboard?score=${score}`)
       .then(r => r.json())
       .then(data => {
-        const entries = Array.isArray(data) ? data : []
+        const entries = Array.isArray(data.entries) ? data.entries : []
         setLeaderboard(entries)
-        // Check if player's score would be in top 10
-        const wouldMakeIt = entries.length < 10 || scoreTotal > (entries[entries.length - 1]?.score ?? 0)
-        setIsTopTen(wouldMakeIt && scoreTotal > 0)
+        setPlayerRank(data.playerRank ?? null)
+        const wouldMakeIt = entries.length < 10 || score > (entries[entries.length - 1]?.score ?? 0)
+        setIsTopTen(wouldMakeIt)
         setLoadingBoard(false)
       })
       .catch(() => setLoadingBoard(false))
-  }, [scoreTotal])
+
+  useEffect(() => { fetchLeaderboard(scoreTotal) }, [scoreTotal])
 
   const handleSubmitScore = async () => {
     const clean = initials.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
@@ -76,9 +78,7 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
 
     setSubmitted(true)
     setSubmittedInitials(clean)
-    fetch('/api/leaderboard')
-      .then(r => r.json())
-      .then(data => setLeaderboard(Array.isArray(data) ? data : []))
+    fetchLeaderboard(scoreTotal)
   }
 
   const correctCount = songStatuses.filter(s => s === 'correct').length
@@ -221,14 +221,35 @@ export default function EndScreen({ scoreTotal, songStatuses, songs, onPlayAgain
               No scores yet — be the first!
             </div>
           ) : (
-            leaderboard.map((entry, i) => (
-              <ScoreRow
-                key={i}
-                rank={i + 1}
-                entry={entry}
-                isPlayer={submittedInitials !== null && entry.initials === submittedInitials && Number(entry.score) === scoreTotal}
-              />
-            ))
+            <>
+              {leaderboard.map((entry, i) => (
+                <ScoreRow
+                  key={i}
+                  rank={i + 1}
+                  entry={entry}
+                  isPlayer={submittedInitials !== null && entry.initials === submittedInitials && Number(entry.score) === scoreTotal}
+                />
+              ))}
+              {playerRank !== null && playerRank > 10 && (
+                <>
+                  <div style={{
+                    padding: '6px 16px',
+                    textAlign: 'center',
+                    color: 'var(--text-muted)',
+                    fontFamily: '"Share Tech Mono", monospace',
+                    fontSize: '12px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                  }}>
+                    · · ·
+                  </div>
+                  <ScoreRow
+                    rank={playerRank}
+                    entry={{ initials: submittedInitials ?? '--', score: scoreTotal }}
+                    isPlayer={true}
+                  />
+                </>
+              )}
+            </>
           )}
         </div>
 

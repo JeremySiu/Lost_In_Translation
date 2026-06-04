@@ -14,9 +14,13 @@ function getSupabase() {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
   const supabase = getSupabase()
   if (!supabase) return NextResponse.json({ error: 'DB unavailable' }, { status: 503 })
+
+  const { searchParams } = new URL(request.url)
+  const scoreParam = searchParams.get('score')
+  const playerScore = scoreParam !== null ? Number(scoreParam) : null
 
   const { data, error } = await supabase
     .from('Leaderboard')
@@ -32,7 +36,14 @@ export async function GET() {
     date: new Date(row.created_at).getTime(),
   }))
 
-  return NextResponse.json(entries)
+  if (playerScore === null) return NextResponse.json({ entries })
+
+  const { count } = await supabase
+    .from('Leaderboard')
+    .select('*', { count: 'exact', head: true })
+    .gt('score', playerScore)
+
+  return NextResponse.json({ entries, playerRank: (count ?? 0) + 1 })
 }
 
 export async function POST(request) {
