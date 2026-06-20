@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import { cachePlaylistSongs } from '../../../../src/lib/playlistCache'
+import { encryptHookLines } from '../../../../src/lib/hookLinesCrypto'
+
+// Allow up to 60 seconds on Vercel Pro (the enrichment pipeline calls
+// Spotify embed + iTunes + Genius for each of the 5 songs in parallel).
+export const maxDuration = 60
 
 const SONGS_PER_ROUND = 5
 
@@ -220,17 +224,20 @@ export async function POST(request) {
   const Genius = GeniusModule.default ?? GeniusModule
   const geniusClient = new Genius.Client(process.env.GENIUS_ACCESS_TOKEN)
 
+  // Enrich candidates in parallel (try up to 3× the required amount to have
+  // enough successful results even if some tracks lack lyrics or previews).
   const shuffled = shuffle(tracks)
-  const enriched = []
-  const usedIds = new Set()
+  const candidates = shuffled.slice(0, Math.min(shuffled.length, SONGS_PER_ROUND * 3))
+  const results = await Promise.allSettled(candidates.map(t => enrichTrack(geniusClient, t)))
 
-  // Walk the shuffled list until we have 5 fully-enriched songs.
-  for (const track of shuffled) {
+  const seen = new Set()
+  const enriched = []
+  for (const r of results) {
     if (enriched.length >= SONGS_PER_ROUND) break
-    const song = await enrichTrack(geniusClient, track)
-    if (!song || usedIds.has(song.id)) continue
-    usedIds.add(song.id)
-    enriched.push(song)
+    if (r.status !== 'fulfilled' || !r.value) continue
+    if (seen.has(r.value.id)) continue
+    seen.add(r.value.id)
+    enriched.push(r.value)
   }
 
   if (enriched.length < SONGS_PER_ROUND) {
@@ -240,9 +247,13 @@ export async function POST(request) {
     )
   }
 
-  cachePlaylistSongs(enriched)
+  // Encrypt hook_lines into a token the client holds and passes back to
+  // /api/mangle and /api/songs/[id]/reveal.  The client never sees the raw
+  // lyrics, preventing cheating while keeping the app fully stateless.
+  const sanitised = enriched.map(({ hook_lines, ...rest }) => ({
+    ...rest,
+    hook_token: encryptHookLines(hook_lines),
+  }))
 
-  // Sanitize: strip hook_lines — only sent via /reveal after a song is resolved.
-  const sanitised = enriched.map(({ hook_lines, ...rest }) => rest)
   return NextResponse.json(sanitised)
 }

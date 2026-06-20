@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
 import { computeAdaptiveParams, buildManglePrompt, pickChain } from '../../../src/lib/adaptive'
-import { getPlaylistSong } from '../../../src/lib/playlistCache'
+import { decryptHookLines } from '../../../src/lib/hookLinesCrypto'
 
 let corpus = []
 try {
@@ -109,10 +109,18 @@ export async function POST(request) {
 
   const { difficulty, clip_duration_ms } = computeAdaptiveParams(performanceHistory, roundNumber)
 
-  // Resolve hook_lines server-side — client only sends song IDs
+  // Resolve hook_lines server-side.
+  // Corpus songs: looked up by ID from the static corpus.
+  // Playlist songs: hook_lines are encrypted in hook_token, decrypted here.
   const songsWithHooks = songs.map(s => {
-    const full = corpusById.get(s.id ?? s) ?? getPlaylistSong(s.id ?? s)
-    return full ? { ...s, hook_lines: full.hook_lines } : s
+    const id = s.id ?? s
+    const corpusSong = corpusById.get(id)
+    if (corpusSong) return { ...s, hook_lines: corpusSong.hook_lines }
+    if (s.hook_token) {
+      const hook_lines = decryptHookLines(s.hook_token)
+      if (hook_lines?.length) return { ...s, hook_lines }
+    }
+    return s
   }).filter(s => s.hook_lines?.length)
 
   if (songsWithHooks.length === 0) {

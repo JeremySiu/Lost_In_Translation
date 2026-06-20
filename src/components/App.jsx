@@ -10,7 +10,7 @@ import LanguageChainBar from './LanguageChainBar'
 import GuessInput from './GuessInput'
 import HintButton from './HintButton'
 import RoundSummary from './RoundSummary'
-import EndScreen from './EndScreen'
+import { computeClipDurationMs } from '../lib/adaptive'
 
 const HINT_COST = 100
 const SONGS_PER_ROUND = 5
@@ -42,7 +42,13 @@ async function fetchPlaylistRound(playlistUrl) {
 
 async function fetchMangle(songs, performanceHistory, roundNumber) {
   const payload = {
-    songs: songs.map(s => ({ id: s.id })),
+    // Include hook_token for playlist songs so the mangle route can decrypt
+    // hook_lines without any shared server state (serverless-safe).
+    songs: songs.map(s => {
+      const entry = { id: s.id }
+      if (s.hook_token) entry.hook_token = s.hook_token
+      return entry
+    }),
     performanceHistory,
     roundNumber,
   }
@@ -54,8 +60,10 @@ async function fetchMangle(songs, performanceHistory, roundNumber) {
   return res.json()
 }
 
-async function fetchReveal(songId) {
-  const res = await fetch(`/api/songs/${songId}/reveal`)
+async function fetchReveal(song) {
+  const base = `/api/songs/${song.id}/reveal`
+  const url = song.hook_token ? `${base}?hook_token=${encodeURIComponent(song.hook_token)}` : base
+  const res = await fetch(url)
   return res.json()
 }
 
@@ -128,7 +136,6 @@ export default function App() {
         type: 'START_GAME',
         songs: songsWithChain,
         mangledSongs,
-        clipDurationMs: mangleResult.clip_duration_ms ?? 4000,
         difficulty: mangleResult.difficulty ?? 'medium',
       })
 
@@ -255,7 +262,7 @@ export default function App() {
 
     if (attempt === correct || guess.toLowerCase().includes(currentSong.title.toLowerCase())) {
       dispatch({ type: 'CORRECT_GUESS' })
-      fetchReveal(currentSong.id).then(data => dispatch({ type: 'SET_REVEAL_DATA', data }))
+      fetchReveal(currentSong).then(data => dispatch({ type: 'SET_REVEAL_DATA', data }))
       // Build the updated perf history the reducer will produce, so mangle gets accurate data
       const timeToGuessSeconds = state.timerStart ? (Date.now() - state.timerStart) / 1000 : 30
       const basePoints = Math.max(100, 500 - state.hintsUsed * 100)
@@ -272,7 +279,7 @@ export default function App() {
   const triggerGiveUp = useCallback(() => {
     dispatch({ type: 'GIVE_UP' })
     if (currentSong) {
-      fetchReveal(currentSong.id).then(data => dispatch({ type: 'SET_REVEAL_DATA', data }))
+      fetchReveal(currentSong).then(data => dispatch({ type: 'SET_REVEAL_DATA', data }))
     }
     const updatedPerf = [...state.performanceHistory, { score: 0, timeToGuessSeconds: 60, hintsUsed: state.hintsUsed, wrongGuesses: state.wrongGuesses }]
     prefetchNextSong(updatedPerf)
@@ -317,6 +324,9 @@ export default function App() {
 
   const maxHints = mangled.length
   const hintsRemaining = Math.max(0, maxHints - state.revealedCount)
+  const currentClipMs = computeClipDurationMs(
+    state.performanceHistory.slice(0, state.currentSongIndex)
+  )
   const currentChain = currentMangled?.language_chain ?? currentSong?.language_chain ?? []
   const allSongsForFuse = state.songs
 
@@ -380,7 +390,7 @@ export default function App() {
             <AudioPlayer
               ref={audioRef}
               previewUrl={currentSong.preview_url}
-              clipDurationMs={state.clipDurationMs}
+              clipDurationMs={currentClipMs}
               songIndex={state.currentSongIndex}
               totalSongs={state.songs.length}
               onClipEnded={handleClipEnded}
