@@ -185,6 +185,15 @@ async function resolveItunes(track) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function POST(request) {
+  // Fail fast with a clear message if required server-side secrets are absent.
+  if (!process.env.GENIUS_ACCESS_TOKEN) {
+    console.error('[playlist] GENIUS_ACCESS_TOKEN is not set — cannot fetch lyrics')
+    return NextResponse.json(
+      { error: 'Server configuration error (lyrics service unavailable).' },
+      { status: 500 }
+    )
+  }
+
   const body = await request.json().catch(() => ({}))
   const playlistId = parsePlaylistId(body.playlistUrl)
 
@@ -208,6 +217,8 @@ export async function POST(request) {
   if (!tracks.length) {
     return NextResponse.json({ error: 'That playlist has no songs.' }, { status: 400 })
   }
+
+  console.log(`[playlist] fetched ${tracks.length} tracks from Spotify`)
 
   // genius-lyrics is CommonJS and exposes `Client` as a named export (no default).
   const GeniusModule = await import('genius-lyrics')
