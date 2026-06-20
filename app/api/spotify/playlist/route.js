@@ -224,20 +224,26 @@ export async function POST(request) {
   const Genius = GeniusModule.default ?? GeniusModule
   const geniusClient = new Genius.Client(process.env.GENIUS_ACCESS_TOKEN)
 
-  // Enrich candidates in parallel (try up to 3× the required amount to have
-  // enough successful results even if some tracks lack lyrics or previews).
+  // Enrich candidates in parallel batches.
+  // Batching avoids hammering iTunes/Genius with too many simultaneous requests
+  // (which causes rate-limit failures) while still being much faster than
+  // pure sequential enrichment.  We keep going until we have 5 songs or
+  // exhaust the playlist — no hard cap on total attempts.
+  const BATCH_SIZE = 8
   const shuffled = shuffle(tracks)
-  const candidates = shuffled.slice(0, Math.min(shuffled.length, SONGS_PER_ROUND * 3))
-  const results = await Promise.allSettled(candidates.map(t => enrichTrack(geniusClient, t)))
-
   const seen = new Set()
   const enriched = []
-  for (const r of results) {
-    if (enriched.length >= SONGS_PER_ROUND) break
-    if (r.status !== 'fulfilled' || !r.value) continue
-    if (seen.has(r.value.id)) continue
-    seen.add(r.value.id)
-    enriched.push(r.value)
+
+  for (let i = 0; i < shuffled.length && enriched.length < SONGS_PER_ROUND; i += BATCH_SIZE) {
+    const batch = shuffled.slice(i, i + BATCH_SIZE)
+    const results = await Promise.allSettled(batch.map(t => enrichTrack(geniusClient, t)))
+    for (const r of results) {
+      if (enriched.length >= SONGS_PER_ROUND) break
+      if (r.status !== 'fulfilled' || !r.value) continue
+      if (seen.has(r.value.id)) continue
+      seen.add(r.value.id)
+      enriched.push(r.value)
+    }
   }
 
   if (enriched.length < SONGS_PER_ROUND) {
