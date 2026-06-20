@@ -165,31 +165,21 @@ async function fetchHookLines(geniusClient, title, artist) {
     if (!searches[0]) return null
     const lyrics = await searches[0].lyrics()
     return extractChorus(lyrics)
-  } catch {
+  } catch (err) {
+    console.error(`[playlist] Genius failed for "${title}" by "${artist}":`, err?.message ?? err)
     return null
   }
 }
 
 // ── Enrichment ────────────────────────────────────────────────────────────────
 
-async function enrichTrack(geniusClient, track) {
+// Phase 1 helper: resolve iTunes metadata (safe to parallelise — iTunes is
+// lenient about concurrency).
+async function resolveItunes(track) {
   const itunes = await itunesSearch(track.title, track.artist)
   if (!itunes?.preview_url) return null
   if (!(await verifyPreviewUrl(itunes.preview_url))) return null
-
-  const hook_lines = await fetchHookLines(geniusClient, itunes.title, itunes.artist)
-  if (!hook_lines?.length) return null
-
-  return {
-    id: `playlist-${slugify(itunes.title, itunes.artist)}`,
-    title: itunes.title,
-    artist: itunes.artist,
-    preview_url: itunes.preview_url,
-    album_art_url: itunes.album_art_url,
-    release_year: itunes.release_year,
-    trending: false,
-    hook_lines,
-  }
+  return itunes
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -224,27 +214,50 @@ export async function POST(request) {
   const Genius = GeniusModule.default ?? GeniusModule
   const geniusClient = new Genius.Client(process.env.GENIUS_ACCESS_TOKEN)
 
-  // Enrich candidates in parallel batches.
-  // Batching avoids hammering iTunes/Genius with too many simultaneous requests
-  // (which causes rate-limit failures) while still being much faster than
-  // pure sequential enrichment.  We keep going until we have 5 songs or
-  // exhaust the playlist — no hard cap on total attempts.
-  const BATCH_SIZE = 8
+  // Two-phase enrichment:
+  //
+  // Phase 1 — iTunes (parallel): iTunes tolerates concurrent lookups well.
+  //   Run up to SONGS_PER_ROUND * 4 candidates simultaneously to quickly find
+  //   tracks that have a valid preview URL.
+  //
+  // Phase 2 — Genius (sequential): the Genius API rate-limits aggressive
+  //   parallel requests, especially on cold-start serverless functions.
+  //   Walk iTunes-verified tracks one at a time until 5 have lyrics.
   const shuffled = shuffle(tracks)
+  const ITUNES_POOL = Math.min(shuffled.length, SONGS_PER_ROUND * 4)
+
+  const itunesResults = await Promise.allSettled(
+    shuffled.slice(0, ITUNES_POOL).map(t => resolveItunes(t).then(itunes => itunes ? { track: t, itunes } : null))
+  )
+  const itunesOk = itunesResults
+    .filter(r => r.status === 'fulfilled' && r.value)
+    .map(r => r.value)
+
+  console.log(`[playlist] ${itunesOk.length}/${ITUNES_POOL} candidates passed iTunes check`)
+
   const seen = new Set()
   const enriched = []
 
-  for (let i = 0; i < shuffled.length && enriched.length < SONGS_PER_ROUND; i += BATCH_SIZE) {
-    const batch = shuffled.slice(i, i + BATCH_SIZE)
-    const results = await Promise.allSettled(batch.map(t => enrichTrack(geniusClient, t)))
-    for (const r of results) {
-      if (enriched.length >= SONGS_PER_ROUND) break
-      if (r.status !== 'fulfilled' || !r.value) continue
-      if (seen.has(r.value.id)) continue
-      seen.add(r.value.id)
-      enriched.push(r.value)
-    }
+  for (const { itunes } of itunesOk) {
+    if (enriched.length >= SONGS_PER_ROUND) break
+    const hook_lines = await fetchHookLines(geniusClient, itunes.title, itunes.artist)
+    if (!hook_lines?.length) continue
+    const id = `playlist-${slugify(itunes.title, itunes.artist)}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    enriched.push({
+      id,
+      title: itunes.title,
+      artist: itunes.artist,
+      preview_url: itunes.preview_url,
+      album_art_url: itunes.album_art_url,
+      release_year: itunes.release_year,
+      trending: false,
+      hook_lines,
+    })
   }
+
+  console.log(`[playlist] enriched ${enriched.length}/${SONGS_PER_ROUND} songs`)
 
   if (enriched.length < SONGS_PER_ROUND) {
     return NextResponse.json(
