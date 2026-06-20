@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getPlaylistSong } from '../../../../../src/lib/playlistCache'
 
 let corpus = []
 try {
@@ -8,7 +9,7 @@ try {
 }
 
 export async function GET(request, { params }) {
-  const song = corpus.find(s => s.id === params.id)
+  const song = corpus.find(s => s.id === params.id) ?? getPlaylistSong(params.id)
   if (!song) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({
     hook_lines: song.hook_lines,

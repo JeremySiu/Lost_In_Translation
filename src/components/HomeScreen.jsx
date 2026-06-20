@@ -1,9 +1,69 @@
 'use client'
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+
+function looksLikePlaylistUrl(url) {
+  return /playlist[/:][A-Za-z0-9]+/.test(url) || /^[A-Za-z0-9]{16,}$/.test(url.trim())
+}
 
 export default function HomeScreen({ onStart, isStarting = false, startError = null }) {
   const [howToOpen, setHowToOpen] = useState(false)
+  const [mode, setMode] = useState('top100')
+  const [playlistUrl, setPlaylistUrl] = useState('')
+  const [urlError, setUrlError] = useState(null)
+
+  const handleStartClick = () => {
+    if (isStarting) return
+    if (mode === 'playlist') {
+      if (!looksLikePlaylistUrl(playlistUrl)) {
+        setUrlError('Enter a valid Spotify playlist link.')
+        return
+      }
+      setUrlError(null)
+      onStart('playlist', playlistUrl.trim())
+    } else {
+      onStart('top100')
+    }
+  }
+
+  const modeButton = (value, title, subtitle) => {
+    const active = mode === value
+    return (
+      <button
+        onClick={() => { setMode(value); setUrlError(null) }}
+        disabled={isStarting}
+        style={{
+          flex: 1,
+          textAlign: 'left',
+          padding: '16px 18px',
+          background: active ? 'var(--accent-yellow)' : 'var(--bg-surface)',
+          color: active ? '#07070d' : 'var(--text-primary)',
+          border: active ? '1px solid var(--accent-yellow)' : '1px solid var(--border-default)',
+          borderRadius: '10px',
+          cursor: isStarting ? 'not-allowed' : 'pointer',
+          transition: 'background 0.2s, color 0.2s, border-color 0.2s',
+        }}
+      >
+        <div style={{
+          fontFamily: '"Bebas Neue", sans-serif',
+          fontSize: '20px',
+          letterSpacing: '0.04em',
+          lineHeight: 1.1,
+        }}>
+          {title}
+        </div>
+        <div style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: '12px',
+          marginTop: '4px',
+          color: active ? 'rgba(7,7,13,0.7)' : 'var(--text-muted)',
+          lineHeight: 1.3,
+        }}>
+          {subtitle}
+        </div>
+      </button>
+    )
+  }
 
   return (
     <div className="game-container" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 'calc(100vh - 80px)' }}>
@@ -12,7 +72,7 @@ export default function HomeScreen({ onStart, isStarting = false, startError = n
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
-        <div style={{ marginBottom: '48px' }}>
+        <div style={{ marginBottom: '36px' }}>
           <h1 style={{
             fontFamily: '"Bebas Neue", sans-serif',
             fontSize: 'clamp(52px, 12vw, 80px)',
@@ -35,8 +95,55 @@ export default function HomeScreen({ onStart, isStarting = false, startError = n
           </p>
         </div>
 
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+          {modeButton('top100', 'TOP 100 HITS', 'Play with trending songs')}
+          {modeButton('playlist', 'MY PLAYLIST', 'Use a Spotify playlist')}
+        </div>
+
+        <AnimatePresence initial={false}>
+          {mode === 'playlist' && (
+            <motion.div
+              key="playlist-input"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              style={{ overflow: 'hidden', marginBottom: '16px' }}
+            >
+              <input
+                type="text"
+                value={playlistUrl}
+                onChange={e => { setPlaylistUrl(e.target.value); setUrlError(null) }}
+                onKeyDown={e => { if (e.key === 'Enter') handleStartClick() }}
+                disabled={isStarting}
+                placeholder="https://open.spotify.com/playlist/..."
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                  border: `1px solid ${urlError ? 'var(--incorrect, #ef4444)' : 'var(--border-default)'}`,
+                  borderRadius: '10px',
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: '14px',
+                  outline: 'none',
+                }}
+              />
+              {urlError && (
+                <p style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: '13px',
+                  color: 'var(--text-muted)',
+                  marginTop: '8px',
+                }}>
+                  {urlError}
+                </p>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <motion.button
-          onClick={isStarting ? undefined : onStart}
+          onClick={handleStartClick}
           whileHover={isStarting ? {} : { scale: 1.03 }}
           whileTap={isStarting ? {} : { scale: 0.97 }}
           disabled={isStarting}
@@ -56,7 +163,9 @@ export default function HomeScreen({ onStart, isStarting = false, startError = n
             transition: 'background 0.2s, color 0.2s',
           }}
         >
-          {isStarting ? 'LOADING...' : 'START GAME'}
+          {isStarting
+            ? (mode === 'playlist' ? 'FETCHING PLAYLIST...' : 'LOADING...')
+            : 'START GAME'}
         </motion.button>
 
         {startError && (

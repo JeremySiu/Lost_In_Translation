@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
 import { computeAdaptiveParams, buildManglePrompt, pickChain } from '../../../src/lib/adaptive'
+import { getPlaylistSong } from '../../../src/lib/playlistCache'
 
 let corpus = []
 try {
@@ -110,7 +111,7 @@ export async function POST(request) {
 
   // Resolve hook_lines server-side — client only sends song IDs
   const songsWithHooks = songs.map(s => {
-    const full = corpusById.get(s.id ?? s)
+    const full = corpusById.get(s.id ?? s) ?? getPlaylistSong(s.id ?? s)
     return full ? { ...s, hook_lines: full.hook_lines } : s
   }).filter(s => s.hook_lines?.length)
 

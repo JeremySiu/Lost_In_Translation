@@ -27,6 +27,19 @@ async function fetchRound(seenIds = []) {
   return res.json()
 }
 
+async function fetchPlaylistRound(playlistUrl) {
+  const res = await fetch('/api/spotify/playlist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playlistUrl }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error ?? 'Could not load that playlist. Please try again.')
+  }
+  return data
+}
+
 async function fetchMangle(songs, performanceHistory, roundNumber) {
   const payload = {
     songs: songs.map(s => ({ id: s.id })),
@@ -82,7 +95,7 @@ export default function App() {
     return () => clearTimeout(t)
   }, [state.phase, state.currentSongIndex, currentSong?.preview_url, dispatch])
 
-  const handleStart = useCallback(async () => {
+  const handleStart = useCallback(async (mode = 'top100', playlistUrl = null) => {
     // Synchronously unlock audio while still inside the click gesture stack,
     // before any await takes us past the browser's autoplay activation window.
     new Audio(SILENCE_SRC).play().catch(() => {})
@@ -90,7 +103,9 @@ export default function App() {
     setIsStarting(true)
     setStartError(null)
     try {
-      const songs = await fetchRound()
+      const songs = mode === 'playlist'
+        ? await fetchPlaylistRound(playlistUrl)
+        : await fetchRound()
       if (!Array.isArray(songs) || !songs.length) {
         throw new Error('Could not load songs. Please try again.')
       }
