@@ -13,7 +13,6 @@ const initialState = {
 
   // Mangled data from /api/mangle (indexed by song id)
   mangledSongs: {},         // { [songId]: { mangled_lines, ... } }
-  clipDurationMs: 4000,
   difficulty: 'medium',
 
   revealedCount: 1,         // how many lyric lines are showing (starts at 1)
@@ -48,7 +47,6 @@ function reducer(state, action) {
         screen: 'round',
         songs: action.songs,
         mangledSongs: action.mangledSongs,
-        clipDurationMs: action.clipDurationMs,
         difficulty: action.difficulty,
         revealedCount: 1,
         songStatuses: Array(action.songs.length).fill('pending'),
@@ -158,13 +156,11 @@ function reducer(state, action) {
     }
 
     case 'MERGE_MANGLE': {
-      // Merge a newly-fetched single-song mangle into the existing map
       const merged = { ...state.mangledSongs }
       action.data.songs?.forEach(m => { merged[m.id] = m })
       return {
         ...state,
         mangledSongs: merged,
-        clipDurationMs: action.data.clip_duration_ms ?? state.clipDurationMs,
         difficulty: action.data.difficulty ?? state.difficulty,
       }
     }

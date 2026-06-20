@@ -4,40 +4,67 @@ const LANGUAGE_POOL = [
   'Latvian', 'Zulu', 'Kazakh', 'Welsh', 'Amharic',
 ]
 
+const START_CLIP_MS = 5000
+const MIN_CLIP_MS = 300
+const MAX_CLIP_MS = 10000
+
+function songPerformanceRatio(p) {
+  const maxScore = 500
+  const scoreRatio = Math.min(p.score / maxScore, 1)
+
+  // Exponential decay: sub-8s stays near max; drops sharply after ~20s
+  const timeRatio = Math.max(0, Math.min(1, Math.exp(-Math.max(0, p.timeToGuessSeconds - 8) / 12)))
+
+  // Exponential: 0 hints = 1.0, each hint cuts credit sharply (~0.43, ~0.18, …)
+  const hintRatio = Math.max(0, Math.min(1, Math.exp(-p.hintsUsed * 0.85)))
+
+  const wrongRatio = Math.max(0, Math.min(1, Math.exp(-p.wrongGuesses * 0.7)))
+
+  const raw =
+    scoreRatio * 0.2 +
+    timeRatio * 0.35 +
+    hintRatio * 0.3 +
+    wrongRatio * 0.15
+
+  // Ease-out curve: strong sessions get pushed toward max difficulty exponentially
+  return 1 - Math.pow(1 - raw, 2.5)
+}
+
+function targetClipFromRatio(performanceRatio) {
+  return Math.round(MIN_CLIP_MS + (MAX_CLIP_MS - MIN_CLIP_MS) * Math.pow(1 - performanceRatio, 2.8))
+}
+
+/** Weighted performance ratio from prior song results (0 = struggling, 1 = acing). */
+export function computePerformanceRatio(performanceHistory = []) {
+  if (performanceHistory.length === 0) return 0
+
+  const scores = performanceHistory.map(songPerformanceRatio)
+  let weightedSum = 0
+  let weightTotal = 0
+  scores.forEach((score, i) => {
+    const weight = 1 + i * 0.4
+    weightedSum += score * weight
+    weightTotal += weight
+  })
+  return weightedSum / weightTotal
+}
+
+/** Clip length for the next song given prior results. Same formula the mangle API uses. */
+export function computeClipDurationMs(performanceHistory = []) {
+  if (performanceHistory.length === 0) return START_CLIP_MS
+  return targetClipFromRatio(computePerformanceRatio(performanceHistory))
+}
+
 /**
  * Compute difficulty tier and clip duration from session performance history.
  * Each entry in performanceHistory: { score, timeToGuessSeconds, hintsUsed, wrongGuesses }
  */
 export function computeAdaptiveParams(performanceHistory = [], roundNumber = 1) {
   if (performanceHistory.length === 0) {
-    return { difficulty: 'medium', clip_duration_ms: 5000 }
+    return { difficulty: 'medium', clip_duration_ms: START_CLIP_MS }
   }
 
-  const scores = performanceHistory.map(p => {
-    // Normalize each signal to 0–1 (higher = player performing better = harder next round)
-    const maxScore = 500
-    const scoreRatio = Math.min(p.score / maxScore, 1)
-
-    // Exponential decay: sub-8s stays near max; drops sharply after ~20s
-    const timeRatio = Math.max(0, Math.min(1, Math.exp(-Math.max(0, p.timeToGuessSeconds - 8) / 12)))
-
-    // Exponential: 0 hints = 1.0, each hint cuts credit sharply (~0.43, ~0.18, …)
-    const hintRatio = Math.max(0, Math.min(1, Math.exp(-p.hintsUsed * 0.85)))
-
-    const wrongRatio = Math.max(0, Math.min(1, Math.exp(-p.wrongGuesses * 0.7)))
-
-    // Weight time & hints higher — fast, no-hint answers should ramp difficulty fastest
-    const raw =
-      scoreRatio * 0.2 +
-      timeRatio * 0.35 +
-      hintRatio * 0.3 +
-      wrongRatio * 0.15
-
-    // Ease-out curve: strong sessions get pushed toward max difficulty exponentially
-    return 1 - Math.pow(1 - raw, 2.5)
-  })
-
-  const performanceRatio = scores.reduce((a, b) => a + b, 0) / scores.length
+  const performanceRatio = computePerformanceRatio(performanceHistory)
 
   let difficulty
   if (performanceRatio >= 0.72) difficulty = 'very_hard'
@@ -46,8 +73,7 @@ export function computeAdaptiveParams(performanceHistory = [], roundNumber = 1) 
   else if (performanceRatio >= 0.15) difficulty = 'easy'
   else difficulty = 'very_easy'
 
-  // Steeper power curve: top players (ratio→1) get ~0.3–1.5s clips, strugglers still ~10s
-  const clip_duration_ms = Math.round(300 + 9700 * Math.pow(1 - performanceRatio, 2.8))
+  const clip_duration_ms = computeClipDurationMs(performanceHistory)
 
   return { difficulty, clip_duration_ms }
 }
