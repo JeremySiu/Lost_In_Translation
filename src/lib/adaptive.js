@@ -18,31 +18,36 @@ export function computeAdaptiveParams(performanceHistory = [], roundNumber = 1) 
     const maxScore = 500
     const scoreRatio = Math.min(p.score / maxScore, 1)
 
-    // Fast guess (<15s) = 1.0, slow (>60s) = 0.0
-    const timeRatio = Math.max(0, Math.min(1, 1 - (p.timeToGuessSeconds - 15) / 45))
+    // Exponential decay: sub-8s stays near max; drops sharply after ~20s
+    const timeRatio = Math.max(0, Math.min(1, Math.exp(-Math.max(0, p.timeToGuessSeconds - 8) / 12)))
 
-    // 0 hints = 1.0, 3+ hints = 0.0
-    const hintRatio = Math.max(0, Math.min(1, 1 - p.hintsUsed / 3))
+    // Exponential: 0 hints = 1.0, each hint cuts credit sharply (~0.43, ~0.18, …)
+    const hintRatio = Math.max(0, Math.min(1, Math.exp(-p.hintsUsed * 0.85)))
 
-    // 0 wrong = 1.0, 3+ wrong = 0.0
-    const wrongRatio = Math.max(0, Math.min(1, 1 - p.wrongGuesses / 3))
+    const wrongRatio = Math.max(0, Math.min(1, Math.exp(-p.wrongGuesses * 0.7)))
 
-    // Weighted average: score 30%, time 30%, hints 20%, wrong 20%
-    return scoreRatio * 0.3 + timeRatio * 0.3 + hintRatio * 0.2 + wrongRatio * 0.2
+    // Weight time & hints higher — fast, no-hint answers should ramp difficulty fastest
+    const raw =
+      scoreRatio * 0.2 +
+      timeRatio * 0.35 +
+      hintRatio * 0.3 +
+      wrongRatio * 0.15
+
+    // Ease-out curve: strong sessions get pushed toward max difficulty exponentially
+    return 1 - Math.pow(1 - raw, 2.5)
   })
 
   const performanceRatio = scores.reduce((a, b) => a + b, 0) / scores.length
 
   let difficulty
-  if (performanceRatio >= 0.85) difficulty = 'very_hard'
-  else if (performanceRatio >= 0.65) difficulty = 'hard'
-  else if (performanceRatio >= 0.40) difficulty = 'medium'
-  else if (performanceRatio >= 0.20) difficulty = 'easy'
+  if (performanceRatio >= 0.72) difficulty = 'very_hard'
+  else if (performanceRatio >= 0.50) difficulty = 'hard'
+  else if (performanceRatio >= 0.32) difficulty = 'medium'
+  else if (performanceRatio >= 0.15) difficulty = 'easy'
   else difficulty = 'very_easy'
 
-  // Power curve: struggling players (ratio→0) get ~10s, top players (ratio→1) get ~1s.
-  // Exponent 1.5 compresses the high end so hard/very_hard land in the 1–3s range.
-  const clip_duration_ms = Math.round(1000 + 9000 * Math.pow(1 - performanceRatio, 1.5))
+  // Steeper power curve: top players (ratio→1) get ~0.3–1.5s clips, strugglers still ~10s
+  const clip_duration_ms = Math.round(300 + 9700 * Math.pow(1 - performanceRatio, 2.8))
 
   return { difficulty, clip_duration_ms }
 }
