@@ -19,9 +19,6 @@
     "react-country-flag": "^3.1.0",
     "react-dom": "^18"
   },
-  "overrides": {
-    "undici": "6.26.0"
-  },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",

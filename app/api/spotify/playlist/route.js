@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { encryptHookLines } from '../../../../src/lib/hookLinesCrypto'
+import { getGeniusLyrics } from '../../../../src/lib/geniusLyrics'
 
 // Allow up to 60 seconds on Vercel Pro (the enrichment pipeline calls
 // Spotify embed + iTunes + Genius for each of the 5 songs in parallel).
@@ -159,11 +160,10 @@ function extractChorus(lyrics) {
   return source.lines.slice(0, 4)
 }
 
-async function fetchHookLines(geniusClient, title, artist) {
+async function fetchHookLines(title, artist) {
   try {
-    const searches = await geniusClient.songs.search(`${title} ${artist}`)
-    if (!searches[0]) return null
-    const lyrics = await searches[0].lyrics()
+    const lyrics = await getGeniusLyrics(title, artist, process.env.GENIUS_ACCESS_TOKEN)
+    if (!lyrics) return null
     return extractChorus(lyrics)
   } catch (err) {
     console.error(`[playlist] Genius failed for "${title}" by "${artist}":`, err?.message ?? err)
@@ -209,11 +209,6 @@ export async function POST(request) {
     return NextResponse.json({ error: 'That playlist has no songs.' }, { status: 400 })
   }
 
-  // genius-lyrics is CommonJS and exposes `Client` as a named export (no default).
-  const GeniusModule = await import('genius-lyrics')
-  const Genius = GeniusModule.default ?? GeniusModule
-  const geniusClient = new Genius.Client(process.env.GENIUS_ACCESS_TOKEN)
-
   // Two-phase enrichment:
   //
   // Phase 1 — iTunes (parallel): iTunes tolerates concurrent lookups well.
@@ -240,7 +235,7 @@ export async function POST(request) {
 
   for (const { itunes } of itunesOk) {
     if (enriched.length >= SONGS_PER_ROUND) break
-    const hook_lines = await fetchHookLines(geniusClient, itunes.title, itunes.artist)
+    const hook_lines = await fetchHookLines(itunes.title, itunes.artist)
     if (!hook_lines?.length) continue
     const id = `playlist-${slugify(itunes.title, itunes.artist)}`
     if (seen.has(id)) continue

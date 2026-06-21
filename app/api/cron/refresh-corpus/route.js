@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { getGeniusLyrics } from '../../../../src/lib/geniusLyrics'
 
 function slugify(title, artist) {
   return `${title}-${artist}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -127,15 +128,12 @@ function extractChorus(lyrics) {
 }
 
 async function fetchLyrics(songs) {
-  const Genius = (await import('genius-lyrics')).default
-  const geniusClient = new Genius.Client(process.env.GENIUS_ACCESS_TOKEN)
   const results = []
   for (const song of songs) {
     await new Promise(r => setTimeout(r, 200))
     try {
-      const searches = await geniusClient.songs.search(`${song.title} ${song.artist}`)
-      if (!searches[0]) continue
-      const lyrics = await searches[0].lyrics()
+      const lyrics = await getGeniusLyrics(song.title, song.artist, process.env.GENIUS_ACCESS_TOKEN)
+      if (!lyrics) continue
       const hook_lines = extractChorus(lyrics)
       if (!hook_lines) continue
       results.push({ ...song, hook_lines })

@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['genius-lyrics', 'undici'],
+    serverComponentsExternalPackages: ['node-html-parser'],
   },
 }
 module.exports = nextConfig
