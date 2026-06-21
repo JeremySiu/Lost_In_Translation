@@ -209,50 +209,42 @@ export async function POST(request) {
     return NextResponse.json({ error: 'That playlist has no songs.' }, { status: 400 })
   }
 
-  // Two-phase enrichment:
-  //
-  // Phase 1 — iTunes (parallel): iTunes tolerates concurrent lookups well.
-  //   Run up to SONGS_PER_ROUND * 4 candidates simultaneously to quickly find
-  //   tracks that have a valid preview URL.
-  //
-  // Phase 2 — Genius (sequential): the Genius API rate-limits aggressive
-  //   parallel requests, especially on cold-start serverless functions.
-  //   Walk iTunes-verified tracks one at a time until 5 have lyrics.
+  // Enrich candidates fully in parallel — iTunes + Genius run simultaneously
+  // across all candidates (capped at SONGS_PER_ROUND * 3 to keep the request
+  // count reasonable). Using native fetch means no undici/rate-limit issues.
   const shuffled = shuffle(tracks)
-  const ITUNES_POOL = Math.min(shuffled.length, SONGS_PER_ROUND * 4)
+  const candidates = shuffled.slice(0, Math.min(shuffled.length, SONGS_PER_ROUND * 3))
 
-  const itunesResults = await Promise.allSettled(
-    shuffled.slice(0, ITUNES_POOL).map(t => resolveItunes(t).then(itunes => itunes ? { track: t, itunes } : null))
+  const enrichResults = await Promise.allSettled(
+    candidates.map(async t => {
+      const itunes = await resolveItunes(t)
+      if (!itunes) return null
+      const hook_lines = await fetchHookLines(itunes.title, itunes.artist)
+      if (!hook_lines?.length) return null
+      return {
+        id: `playlist-${slugify(itunes.title, itunes.artist)}`,
+        title: itunes.title,
+        artist: itunes.artist,
+        preview_url: itunes.preview_url,
+        album_art_url: itunes.album_art_url,
+        release_year: itunes.release_year,
+        trending: false,
+        hook_lines,
+      }
+    })
   )
-  const itunesOk = itunesResults
-    .filter(r => r.status === 'fulfilled' && r.value)
-    .map(r => r.value)
-
-  console.log(`[playlist] ${itunesOk.length}/${ITUNES_POOL} candidates passed iTunes check`)
 
   const seen = new Set()
   const enriched = []
-
-  for (const { itunes } of itunesOk) {
+  for (const r of enrichResults) {
     if (enriched.length >= SONGS_PER_ROUND) break
-    const hook_lines = await fetchHookLines(itunes.title, itunes.artist)
-    if (!hook_lines?.length) continue
-    const id = `playlist-${slugify(itunes.title, itunes.artist)}`
-    if (seen.has(id)) continue
-    seen.add(id)
-    enriched.push({
-      id,
-      title: itunes.title,
-      artist: itunes.artist,
-      preview_url: itunes.preview_url,
-      album_art_url: itunes.album_art_url,
-      release_year: itunes.release_year,
-      trending: false,
-      hook_lines,
-    })
+    if (r.status !== 'fulfilled' || !r.value) continue
+    if (seen.has(r.value.id)) continue
+    seen.add(r.value.id)
+    enriched.push(r.value)
   }
 
-  console.log(`[playlist] enriched ${enriched.length}/${SONGS_PER_ROUND} songs`)
+  console.log(`[playlist] enriched ${enriched.length}/${candidates.length} candidates`)
 
   if (enriched.length < SONGS_PER_ROUND) {
     return NextResponse.json(
