@@ -3,6 +3,8 @@ import fs from 'fs'
 import path from 'path'
 import { getGeniusLyrics } from '../../../../src/lib/geniusLyrics'
 
+export const dynamic = 'force-dynamic'
+
 function slugify(title, artist) {
   return `${title}-${artist}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }

@@ -163,10 +163,15 @@ function extractChorus(lyrics) {
 async function fetchHookLines(title, artist) {
   try {
     const lyrics = await getGeniusLyrics(title, artist, process.env.GENIUS_ACCESS_TOKEN)
-    if (!lyrics) return null
-    return extractChorus(lyrics)
+    if (!lyrics) {
+      console.warn(`[playlist] no lyrics for "${title}" by "${artist}"`)
+      return null
+    }
+    const chorus = extractChorus(lyrics)
+    if (!chorus) console.warn(`[playlist] no chorus extracted for "${title}" by "${artist}"`)
+    return chorus
   } catch (err) {
-    console.error(`[playlist] Genius failed for "${title}" by "${artist}":`, err?.message ?? err)
+    console.error(`[playlist] Genius error for "${title}" by "${artist}":`, err?.message ?? err)
     return null
   }
 }
