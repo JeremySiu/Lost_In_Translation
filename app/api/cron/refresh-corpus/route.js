@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import { getGeniusLyrics } from '../../../../src/lib/geniusLyrics'
+import { getLrclibHookLines } from '../../../../src/lib/lrclibLyrics'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,45 +98,14 @@ async function fetchTop100() {
   }))
 }
 
-// ── Step 2: Genius chorus extraction (mirrors 2-fetch-lyrics.js) ──────────────
-
-function extractSections(lyrics) {
-  const blocks = lyrics.split(/\n(?=\s*\[)/)
-  const sections = []
-  for (const block of blocks) {
-    const trimmedBlock = block.trim()
-    if (!trimmedBlock) continue
-    const header = trimmedBlock.match(/^\[([^\]]+)\]/)
-    let label = 'unknown'
-    if (header) {
-      label = header[1].toLowerCase().replace(/[:\d\s].*$/, '').trim()
-    }
-    const content = trimmedBlock.replace(/^\[[^\]]+\]\n?/, '').trim()
-    const lines = content.split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 0 && !l.startsWith('[') && l.split(/\s+/).length >= 2)
-    if (lines.length >= 4) sections.push({ label, lines })
-  }
-  return sections
-}
-
-function extractChorus(lyrics) {
-  const sections = extractSections(lyrics)
-  const chorusLabels = ['chorus', 'hook', 'refrain']
-  const chorus = sections.find(s => chorusLabels.includes(s.label))
-  const source = chorus || sections[0]
-  if (!source) return null
-  return source.lines.slice(0, 4)
-}
+// ── Step 2: lrclib hook-line extraction ───────────────────────────────────────
 
 async function fetchLyrics(songs) {
   const results = []
   for (const song of songs) {
     await new Promise(r => setTimeout(r, 200))
     try {
-      const lyrics = await getGeniusLyrics(song.title, song.artist, process.env.GENIUS_ACCESS_TOKEN)
-      if (!lyrics) continue
-      const hook_lines = extractChorus(lyrics)
+      const hook_lines = await getLrclibHookLines(song.title, song.artist)
       if (!hook_lines) continue
       results.push({ ...song, hook_lines })
     } catch { /* skip */ }

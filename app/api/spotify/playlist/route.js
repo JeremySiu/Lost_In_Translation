@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { encryptHookLines } from '../../../../src/lib/hookLinesCrypto'
-import { getGeniusLyrics } from '../../../../src/lib/geniusLyrics'
+import { getLrclibHookLines } from '../../../../src/lib/lrclibLyrics'
 
 // Allow up to 60 seconds on Vercel Pro (the enrichment pipeline calls
-// Spotify embed + iTunes + Genius for each of the 5 songs in parallel).
+// Spotify embed + iTunes + lrclib for each of the 5 songs in parallel).
 export const maxDuration = 60
 
 const SONGS_PER_ROUND = 5
@@ -129,51 +129,12 @@ async function verifyPreviewUrl(url) {
   }
 }
 
-// ── Genius chorus extraction (mirrors cron/refresh-corpus) ─────────────────────
-
-function extractSections(lyrics) {
-  const blocks = lyrics.split(/\n(?=\s*\[)/)
-  const sections = []
-  for (const block of blocks) {
-    const trimmedBlock = block.trim()
-    if (!trimmedBlock) continue
-    const header = trimmedBlock.match(/^\[([^\]]+)\]/)
-    let label = 'unknown'
-    if (header) {
-      label = header[1].toLowerCase().replace(/[:\d\s].*$/, '').trim()
-    }
-    const content = trimmedBlock.replace(/^\[[^\]]+\]\n?/, '').trim()
-    const lines = content.split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 0 && !l.startsWith('[') && l.split(/\s+/).length >= 2)
-    if (lines.length >= 4) sections.push({ label, lines })
-  }
-  return sections
-}
-
-function extractChorus(lyrics) {
-  const sections = extractSections(lyrics)
-  const chorusLabels = ['chorus', 'hook', 'refrain']
-  const chorus = sections.find(s => chorusLabels.includes(s.label))
-  const source = chorus || sections[0]
-  if (!source) return null
-  return source.lines.slice(0, 4)
-}
+// ── lrclib hook-line extraction ───────────────────────────────────────────────
 
 async function fetchHookLines(title, artist) {
-  try {
-    const lyrics = await getGeniusLyrics(title, artist, process.env.GENIUS_ACCESS_TOKEN)
-    if (!lyrics) {
-      console.warn(`[playlist] no lyrics for "${title}" by "${artist}"`)
-      return null
-    }
-    const chorus = extractChorus(lyrics)
-    if (!chorus) console.warn(`[playlist] no chorus extracted for "${title}" by "${artist}"`)
-    return chorus
-  } catch (err) {
-    console.error(`[playlist] Genius error for "${title}" by "${artist}":`, err?.message ?? err)
-    return null
-  }
+  const lines = await getLrclibHookLines(title, artist)
+  if (!lines?.length) console.warn(`[playlist] no hook lines for "${title}" by "${artist}"`)
+  return lines ?? null
 }
 
 // ── Enrichment ────────────────────────────────────────────────────────────────
@@ -214,7 +175,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'That playlist has no songs.' }, { status: 400 })
   }
 
-  // Enrich candidates fully in parallel — iTunes + Genius run simultaneously
+  // Enrich candidates fully in parallel — iTunes + lrclib run simultaneously
   // across all candidates (capped at SONGS_PER_ROUND * 3 to keep the request
   // count reasonable). Using native fetch means no undici/rate-limit issues.
   const shuffled = shuffle(tracks)
