@@ -10,6 +10,7 @@ import LanguageChainBar from './LanguageChainBar'
 import GuessInput from './GuessInput'
 import HintButton from './HintButton'
 import RoundSummary from './RoundSummary'
+import EndScreen from './EndScreen'
 import { computeClipDurationMs } from '../lib/adaptive'
 
 const HINT_COST = 100
