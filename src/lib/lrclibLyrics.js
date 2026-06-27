@@ -159,9 +159,6 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
  * @returns {Promise<string[]|null>}
  */
 export async function getLrclibHookLines(title, artist) {
-  const MAX_RETRIES = 2
-  const RETRY_DELAY_MS = 1500
-
   const doSearch = async () => {
     const url =
       `${LRCLIB_BASE}/search` +
@@ -173,10 +170,10 @@ export async function getLrclibHookLines(title, artist) {
   try {
     let res = await doSearch()
 
-    // Retry up to MAX_RETRIES times on 429, with increasing back-off
-    for (let attempt = 1; attempt < MAX_RETRIES && res.status === 429; attempt++) {
-      console.warn(`[lrclib] 429 for "${title}" — retrying in ${RETRY_DELAY_MS * attempt}ms`)
-      await sleep(RETRY_DELAY_MS * attempt)
+    // Single retry on 429 after a short back-off
+    if (res.status === 429) {
+      console.warn(`[lrclib] 429 for "${title}" — retrying in 1s`)
+      await sleep(1000)
       res = await doSearch()
     }
 

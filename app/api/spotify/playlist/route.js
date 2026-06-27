@@ -175,29 +175,35 @@ export async function POST(request) {
     return NextResponse.json({ error: 'That playlist has no songs.' }, { status: 400 })
   }
 
-  // Enrich candidates fully in parallel — iTunes + lrclib run simultaneously
-  // across all candidates (capped at SONGS_PER_ROUND * 3 to keep the request
-  // count reasonable). Using native fetch means no undici/rate-limit issues.
+  // Enrich candidates in parallel (capped at SONGS_PER_ROUND * 2 = 10).
+  // Each candidate is wrapped in a hard 10 s timeout so one slow iTunes or
+  // lrclib call can never hold up the entire pipeline.
+  const CANDIDATE_TIMEOUT_MS = 10_000
   const shuffled = shuffle(tracks)
-  const candidates = shuffled.slice(0, Math.min(shuffled.length, SONGS_PER_ROUND * 3))
+  const candidates = shuffled.slice(0, Math.min(shuffled.length, SONGS_PER_ROUND * 2))
 
   const enrichResults = await Promise.allSettled(
-    candidates.map(async t => {
-      const itunes = await resolveItunes(t)
-      if (!itunes) return null
-      const hook_lines = await fetchHookLines(itunes.title, itunes.artist)
-      if (!hook_lines?.length) return null
-      return {
-        id: `playlist-${slugify(itunes.title, itunes.artist)}`,
-        title: itunes.title,
-        artist: itunes.artist,
-        preview_url: itunes.preview_url,
-        album_art_url: itunes.album_art_url,
-        release_year: itunes.release_year,
-        trending: false,
-        hook_lines,
-      }
-    })
+    candidates.map(t =>
+      Promise.race([
+        (async () => {
+          const itunes = await resolveItunes(t)
+          if (!itunes) return null
+          const hook_lines = await fetchHookLines(itunes.title, itunes.artist)
+          if (!hook_lines?.length) return null
+          return {
+            id: `playlist-${slugify(itunes.title, itunes.artist)}`,
+            title: itunes.title,
+            artist: itunes.artist,
+            preview_url: itunes.preview_url,
+            album_art_url: itunes.album_art_url,
+            release_year: itunes.release_year,
+            trending: false,
+            hook_lines,
+          }
+        })(),
+        new Promise(resolve => setTimeout(() => resolve(null), CANDIDATE_TIMEOUT_MS)),
+      ])
+    )
   )
 
   const seen = new Set()
