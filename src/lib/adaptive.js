@@ -20,14 +20,12 @@ function songPerformanceRatio(p) {
 
   const wrongRatio = Math.max(0, Math.min(1, Math.exp(-p.wrongGuesses * 0.7)))
 
-  const raw =
+  return (
     scoreRatio * 0.2 +
     timeRatio * 0.35 +
     hintRatio * 0.3 +
     wrongRatio * 0.15
-
-  // Ease-out curve: strong sessions get pushed toward max difficulty exponentially
-  return 1 - Math.pow(1 - raw, 2.5)
+  )
 }
 
 function targetClipFromRatio(performanceRatio) {
@@ -52,7 +50,15 @@ export function computePerformanceRatio(performanceHistory = []) {
 /** Clip length for the next song given prior results. Same formula the mangle API uses. */
 export function computeClipDurationMs(performanceHistory = []) {
   if (performanceHistory.length === 0) return START_CLIP_MS
-  return targetClipFromRatio(computePerformanceRatio(performanceHistory))
+  const n = performanceHistory.length
+  // Only look at the last 3 songs so the clip recovers quickly when a player
+  // starts struggling again after an early lucky song.
+  const recentHistory = performanceHistory.slice(-3)
+  // Ramp to full adaptive effect over the first 4 songs so a single outlier
+  // result can't immediately floor or ceiling the clip.
+  const rampFactor = Math.min(n / 4, 1)
+  const targetMs = targetClipFromRatio(computePerformanceRatio(recentHistory))
+  return Math.round(START_CLIP_MS + (targetMs - START_CLIP_MS) * rampFactor)
 }
 
 /**

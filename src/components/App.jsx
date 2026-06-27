@@ -325,8 +325,12 @@ export default function App() {
 
   const maxHints = mangled.length
   const hintsRemaining = Math.max(0, maxHints - state.revealedCount)
+  // After a song resolves, include its performance entry so that a give-up
+  // (score: 0) lowers the ratio and extends the replay clip for that song.
   const currentClipMs = computeClipDurationMs(
-    state.performanceHistory.slice(0, state.currentSongIndex)
+    state.phase === 'resolved'
+      ? state.performanceHistory.slice(0, state.currentSongIndex + 1)
+      : state.performanceHistory.slice(0, state.currentSongIndex)
   )
   const currentChain = currentMangled?.language_chain ?? currentSong?.language_chain ?? []
   const allSongsForFuse = state.songs
